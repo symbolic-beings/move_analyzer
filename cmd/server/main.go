@@ -22,30 +22,27 @@ var upgrader = websocket.Upgrader{
 }
 
 func reader(conn *websocket.Conn) {
-	var done chan interface{}
+	done := make(chan interface{})
 	s := analyzer.NewStockfish()
+	positions := make(chan string)
+	out, err := s.StartAnalysis(done, positions, depth)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	go writeAnalysisToOutput(out, conn, 1)
+
 	for {
-		messageType, p, err := conn.ReadMessage()
+		_, p, err := conn.ReadMessage()
 		if err != nil {
 			log.Println(err)
-			return
-		}
-		if done != nil {
 			close(done)
+			return
 		}
 
 		log.Println("message received: ", string(p))
+		positions <- string(p)
 
-		// start up the stockfish here
-		done = make(chan interface{})
-
-		out, err := s.AnalyzePosition(done, string(p), depth)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		go writeAnalysisToOutput(out, conn, messageType)
 	}
 }
 

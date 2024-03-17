@@ -7,12 +7,8 @@ import (
 	"os/exec"
 )
 
-const (
-// pathToStockfish = `C:\Users\boeck\OneDrive\Desktop\stockfish\stockfish-windows-x86-64.exe`
-)
-
 type Engine interface {
-	AnalyzePosition(done <-chan interface{}, position string, depth int) (<-chan string, error)
+	StartAnalysis(done <-chan interface{}, positions <-chan string, depth int) (<-chan string, error)
 }
 
 type stockfish struct{}
@@ -23,7 +19,7 @@ func NewStockfish() Engine {
 
 // TODO: need a chan of errors going out
 
-func (s *stockfish) AnalyzePosition(done <-chan interface{}, position string, depth int) (<-chan string, error) {
+func (s *stockfish) StartAnalysis(done <-chan interface{}, positions <-chan string, depth int) (<-chan string, error) {
 	out := make(chan string)
 	// TODO: make this part of the setup process before sending in positions
 	cmd := exec.Command("pathToStockfish")
@@ -32,41 +28,45 @@ func (s *stockfish) AnalyzePosition(done <-chan interface{}, position string, de
 		fmt.Println(err)
 		return out, err
 	}
+	scanner := bufio.NewScanner(stdout)
 
 	// TODO: definitely check the error here
+	// this is also leaking
 	go cmd.Run()
 
 	go func() {
-		defer close(out)
-		for {
-			err = sendPositionToStdIn(stdin, position, depth)
-			if err != nil {
-				fmt.Println("error sending position to stdin: ", err.Error())
+		for scanner.Scan() {
+			select {
+			case <-done:
 				return
+			case out <- scanner.Text():
 			}
-			scanner := bufio.NewScanner(stdout)
+		}
+	}()
 
-			for scanner.Scan() {
-				select {
-				case <-done:
-					stdout.Close()
-					stdin.Close()
-					err = cmd.Process.Kill()
-					if err != nil {
-						fmt.Println("error on closing process: ", err.Error())
-						return
-					}
-
-					fmt.Println("done scanning")
-
-				case out <- scanner.Text():
-					fmt.Println("sending")
+	go func() {
+		defer close(out)
+		for position := range positions {
+			select {
+			case <-done:
+				fmt.Println("done scanning")
+				stdout.Close()
+				stdin.Close()
+				err = cmd.Process.Kill()
+				if err != nil {
+					fmt.Println("error on closing process: ", err.Error())
 				}
-
+				return
+			default:
+				fmt.Println("received position: ", position)
+				err = sendPositionToStdIn(stdin, position, depth)
+				if err != nil {
+					fmt.Println("error sending position to stdin: ", err.Error())
+					return
+				}
 			}
 
 		}
-
 	}()
 
 	return out, nil
