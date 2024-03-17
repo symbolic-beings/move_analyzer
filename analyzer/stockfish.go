@@ -58,7 +58,7 @@ func (s *stockfish) StartAnalysis(done <-chan interface{}, positions <-chan stri
 				}
 				return
 			default:
-				fmt.Println("received position: ", position)
+				// fmt.Println("received position: ", position)
 				err = sendPositionToStdIn(stdin, position, depth)
 				if err != nil {
 					fmt.Println("error sending position to stdin: ", err.Error())
