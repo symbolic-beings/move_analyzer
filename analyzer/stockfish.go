@@ -18,7 +18,6 @@ func NewStockfish() Engine {
 }
 
 // TODO: need a chan of errors going out
-
 func (s *stockfish) StartAnalysis(done <-chan interface{}, positions <-chan string, depth int) (<-chan string, error) {
 	out := make(chan string)
 	// TODO: make this part of the setup process before sending in positions
@@ -46,7 +45,7 @@ func (s *stockfish) StartAnalysis(done <-chan interface{}, positions <-chan stri
 
 	go func() {
 		defer close(out)
-		for position := range positions {
+		for {
 			select {
 			case <-done:
 				fmt.Println("done scanning")
@@ -57,7 +56,7 @@ func (s *stockfish) StartAnalysis(done <-chan interface{}, positions <-chan stri
 					fmt.Println("error on closing process: ", err.Error())
 				}
 				return
-			default:
+			case position := <-positions:
 				// fmt.Println("received position: ", position)
 				err = sendPositionToStdIn(stdin, position, depth)
 				if err != nil {
